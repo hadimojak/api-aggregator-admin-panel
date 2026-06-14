@@ -1,15 +1,27 @@
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  color: #111827;
-  background: #ffffff;
+  --bg: #0b1220;
+  --card: #101a2e;
+  --text: #e8eefc;
+  --muted: #9db0d6;
+  --border: rgba(255, 255, 255, 0.12);
+  --primary: #6aa6ff;
+  --danger: #ff6a7a;
+  --ok: #3ddc97;
+
+  color: var(--text);
+  background: radial-gradient(1200px 700px at 20% 0%, #152a52, var(--bg));
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
 }
-

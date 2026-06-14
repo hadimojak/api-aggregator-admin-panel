@@ -1,9 +1,12 @@
-# Vite + React
+# api-aggregator-admin-panel
 
-## Getting started
+Super simple static admin panel for managing Provider routes.
 
-```bash
-npm install
-npm run dev
-```
+## Run
 
+- Open `public/index.html` in a browser, or serve it with any static server.
+- Configure API base URL in the UI (default: `http://localhost:4000`).
+
+## API
+
+- Providers: `GET/POST /admin/provider`, `GET/PUT/PATCH/DELETE /admin/provider/:id`
