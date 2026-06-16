@@ -2,10 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import "../../App.css";
 
 function escapeHtml(str) {
-  return String(str ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+  return String(str ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 function Status({ kind, message }) {
@@ -13,53 +10,39 @@ function Status({ kind, message }) {
   return <div className={`status mono ${kind || ""}`}>{message}</div>;
 }
 
-function ProviderTable({ providers, onEdit, onDelete }) {
+function TenantTable({ tenants, onEdit, onDelete }) {
   return (
     <div className="tableWrap">
       <table>
         <thead>
           <tr>
-            <th>Code</th>
-            <th>Type</th>
-            <th>Base URL</th>
+            <th>Name</th>
             <th>API Key</th>
-            <th>Timeout</th>
+            <th>Rate-Limit/Min</th>
             <th>Active</th>
             <th className="right">Actions</th>
           </tr>
         </thead>
-
         <tbody>
-          {providers.map((p) => (
-            <tr key={p.id}>
-              <td className="mono">{escapeHtml(p.code)}</td>
-              <td>{escapeHtml(p.type)}</td>
-              <td className="mono urlCell">{escapeHtml(p.baseUrl)}</td>
-              <td className="mono">{escapeHtml(p.apiKey)}</td>
-              <td>{p.timeout ?? "-"}</td>
+          {tenants.map((t) => (
+            <tr key={t.id}>
+              <td>{escapeHtml(t.name)}</td>
+              <td className="mono">{escapeHtml(t.apiKey)}</td>
+              <td>{t.rateLimitPerMin ?? "-"}</td>
               <td>
-                <span className={`badge ${p.isActive ? "active" : "inactive"}`}>
-                  {String(p.isActive)}
+                <span className={`badge ${t.isActive ? "active" : "inactive"}`}>
+                  {String(t.isActive)}
                 </span>
               </td>
-
               <td className="right actions">
-                <button className="btn" onClick={() => onEdit(p)}>
-                  Edit
-                </button>
-
-                <button className="btn danger" onClick={() => onDelete(p)}>
-                  Delete
-                </button>
+                <button className="btn" onClick={() => onEdit(t)}>Edit</button>
+                <button className="btn danger" onClick={() => onDelete(t)}>Delete</button>
               </td>
             </tr>
           ))}
-
-          {providers.length === 0 && (
+          {tenants.length === 0 && (
             <tr>
-              <td colSpan={7} className="empty">
-                No providers found
-              </td>
+              <td colSpan={5} className="empty">No tenants found</td>
             </tr>
           )}
         </tbody>
@@ -68,101 +51,39 @@ function ProviderTable({ providers, onEdit, onDelete }) {
   );
 }
 
-function ProviderEditor({ mode, form, onChange, onSave, onClear, saving }) {
+function TenantEditor({ mode, form, onChange, onSave, onClear, saving }) {
   return (
     <aside className="card editorCard">
       <div className="cardHeader">
         <div>
-          <h2>{mode === "edit" ? "Update Provider" : "Create Provider"}</h2>
-          <p>Manage provider route configuration</p>
+          <h2>{mode === "edit" ? "Update Tenant" : "Create Tenant"}</h2>
+          <p>Manage tenant configuration and limits</p>
         </div>
-
         <span className="modeBadge">{mode}</span>
       </div>
-
-      <form
-        className="form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          onSave();
-        }}
-      >
+      <form className="form" onSubmit={(e) => { e.preventDefault(); onSave(); }}>
         <label>
-          Code
-          <input
-            required
-            value={form.code}
-            onChange={(e) => onChange({ code: e.target.value })}
-          />
+          Name
+          <input required value={form.name} onChange={(e) => onChange({ name: e.target.value })} />
         </label>
-
-        <label>
-          Type
-          <input
-            required
-            value={form.type}
-            onChange={(e) => onChange({ type: e.target.value })}
-          />
-        </label>
-
-        <label>
-          Base URL
-          <input
-            required
-            placeholder="https://api.example.com"
-            value={form.baseUrl}
-            onChange={(e) => onChange({ baseUrl: e.target.value })}
-          />
-        </label>
-
         <label>
           API Key
-          <input
-            placeholder="sk_live_..."
-            value={form.apiKey}
-            onChange={(e) => onChange({ apiKey: e.target.value })}
-          />
+          <input required placeholder="api_key_..." value={form.apiKey} onChange={(e) => onChange({ apiKey: e.target.value })} />
         </label>
-
         <label>
-          Timeout
-          <input
-            type="number"
-            min="100"
-            max="60000"
-            value={form.timeout}
-            onChange={(e) => onChange({ timeout: e.target.value })}
-          />
+          Rate Limit (per min)
+          <input type="number" min="1" value={form.rateLimitPerMin} onChange={(e) => onChange({ rateLimitPerMin: e.target.value })} />
         </label>
-
         <label>
           Active
-          <select
-            value={String(form.isActive)}
-            onChange={(e) =>
-              onChange({
-                isActive: e.target.value === "true",
-              })
-            }
-          >
+          <select value={String(form.isActive)} onChange={(e) => onChange({ isActive: e.target.value === "true" })}>
             <option value="true">true</option>
             <option value="false">false</option>
           </select>
         </label>
-
         <div className="editorButtons">
-          <button className="btn primary" disabled={saving}>
-            {saving ? "Saving..." : mode === "edit" ? "Update" : "Create"}
-          </button>
-
-          <button
-            type="button"
-            className="btn"
-            onClick={onClear}
-            disabled={saving}
-          >
-            Clear
-          </button>
+          <button className="btn primary" disabled={saving}>{saving ? "Saving..." : mode === "edit" ? "Update" : "Create"}</button>
+          <button type="button" className="btn" onClick={onClear} disabled={saving}>Clear</button>
         </div>
       </form>
     </aside>
@@ -171,349 +92,175 @@ function ProviderEditor({ mode, form, onChange, onSave, onClear, saving }) {
 
 async function fetchJson(url, options = {}) {
   const hasBody = options.body !== undefined;
-
   const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
+    method: options.method || 'GET',
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...options.headers,
     },
+    body: options.body
   });
-
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
-
-  if (!res.ok) {
-    throw new Error(data?.message || res.statusText);
-  }
-
+  if (!res.ok) throw new Error(data?.message || res.statusText);
   return data;
-}
-
-function normalizeBaseUrl(url) {
-  return String(url || "")
-    .trim()
-    .replace(/\/$/, "");
 }
 
 function buildQuery(filters) {
   const params = new URLSearchParams();
-
-  if (filters.baseUrl.trim()) params.set("baseUrl", filters.baseUrl.trim());
-  if (filters.type.trim()) params.set("type", filters.type.trim());
-  if (filters.code.trim()) params.set("code", filters.code.trim());
+  if (filters.name.trim()) params.set("name", filters.name.trim());
   if (filters.apiKey.trim()) params.set("apiKey", filters.apiKey.trim());
+  
+  // Rate limit logic
+  if (filters.rateLimitPerMin !== "") {
+    params.set("rateLimitPerMin", filters.rateLimitPerMin);
+  }
 
   if (filters.isActive !== "") {
     params.set("isActive", filters.isActive);
   }
-
-  if (filters.timeout !== "") {
-    params.set("timeout", String(filters.timeout));
-  }
-
   const query = params.toString();
   return query ? `?${query}` : "";
 }
 
-const defaultForm = {
-  id: "",
-  code: "",
-  type: "",
-  baseUrl: "",
-  apiKey: "",
-  isActive: true,
-  timeout: 10000,
-};
+const defaultForm = { id: "", name: "", apiKey: "", isActive: true, rateLimitPerMin: 100 };
+const defaultFilters = { name: "", apiKey: "", isActive: "", rateLimitPerMin: "" };
 
-const defaultFilters = {
-  baseUrl: "",
-  type: "",
-  code: "",
-  apiKey: "",
-  isActive: "",
-  timeout: "",
-};
-
-export default function App() {
-  const [apiBase, setApiBase] = useState(
-    () => localStorage.getItem("apiBase") || "http://localhost:4000",
-  );
-
+export default function TenantPage({ base }) {
   const [filters, setFilters] = useState(defaultFilters);
-  const [providers, setProviders] = useState([]);
+  const [tenants, setTenants] = useState([]);
   const [mode, setMode] = useState("create");
   const [form, setForm] = useState(defaultForm);
-
-  const [status, setStatus] = useState({
-    kind: "",
-    message: "",
-  });
-
+  const [status, setStatus] = useState({ kind: "", message: "" });
   const [saving, setSaving] = useState(false);
 
-  const base = useMemo(() => normalizeBaseUrl(apiBase), [apiBase]);
-
-  useEffect(() => {
-    localStorage.setItem("apiBase", base);
-  }, [base]);
-
-  async function loadProviders() {
-    setStatus({
-      kind: "",
-      message: "Loading providers...",
-    });
-
-    const url = base + "/admin/provider" + buildQuery(filters);
-    const data = await fetchJson(url);
-
-    setProviders(Array.isArray(data) ? data : []);
-
-    setStatus({
-      kind: "ok",
-      message: `Loaded ${Array.isArray(data) ? data.length : 0} providers`,
-    });
+  async function loadTenants() {
+    setStatus({ kind: "", message: "Loading tenants..." });
+    try {
+      // Using /user/tenant as requested
+      const url = base + "/user/tenant" + buildQuery(filters);
+      const data = await fetchJson(url);
+      setTenants(Array.isArray(data) ? data : []);
+      setStatus({ kind: "ok", message: `Loaded ${Array.isArray(data) ? data.length : 0} tenants` });
+    } catch (e) {
+      setStatus({ kind: "err", message: e.message });
+    }
   }
 
   useEffect(() => {
     if (!base) return;
-
-    loadProviders().catch((e) =>
-      setStatus({
-        kind: "err",
-        message: e.message,
-      }),
-    );
-  }, [
-    base,
-    filters.baseUrl,
-    filters.type,
-    filters.code,
-    filters.apiKey,
-    filters.isActive,
-    filters.timeout,
-  ]);
+    loadTenants();
+  }, [base, filters.name, filters.apiKey, filters.isActive, filters.rateLimitPerMin]);
 
   function clearForm() {
     setMode("create");
     setForm(defaultForm);
   }
 
-  function clearFilters() {
-    setFilters(defaultFilters);
-  }
-
-  function selectProvider(p) {
+  function selectTenant(t) {
     setMode("edit");
-
     setForm({
-      id: p.id || "",
-      code: p.code || "",
-      type: p.type || "",
-      baseUrl: p.baseUrl || "",
-      apiKey: p.apiKey || "",
-      isActive: p.isActive ?? true,
-      timeout: p.timeout ?? 10000,
+      id: t.id || "",
+      name: t.name || "",
+      apiKey: t.apiKey || "",
+      isActive: t.isActive ?? true,
+      rateLimitPerMin: t.rateLimitPerMin ?? 100,
     });
-  }
-
-  function formPayload() {
-    return {
-      code: String(form.code || "").trim(),
-      type: String(form.type || "").trim(),
-      baseUrl: String(form.baseUrl || "").trim(),
-      apiKey: String(form.apiKey || "").trim(),
-      isActive:
-        typeof form.isActive === "string"
-          ? form.isActive === "true"
-          : Boolean(form.isActive),
-      timeout: Number(form.timeout),
-    };
   }
 
   async function save() {
     setSaving(true);
-
     try {
-      const payload = formPayload();
+      const payload = {
+        name: String(form.name || "").trim(),
+        apiKey: String(form.apiKey || "").trim(),
+        isActive: Boolean(form.isActive),
+        rateLimitPerMin: Number(form.rateLimitPerMin),
+      };
 
       if (mode === "edit") {
-        await fetchJson(base + "/admin/provider/" + form.id, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        });
-
-        setStatus({
-          kind: "ok",
-          message: "Provider updated",
-        });
+        await fetchJson(base + "/user/tenant/" + form.id, { method: "PUT", body: JSON.stringify(payload) });
+        setStatus({ kind: "ok", message: "Tenant updated" });
       } else {
-        await fetchJson(base + "/admin/provider", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-
-        setStatus({
-          kind: "ok",
-          message: "Provider created",
-        });
+        await fetchJson(base + "/user/tenant", { method: "POST", body: JSON.stringify(payload) });
+        setStatus({ kind: "ok", message: "Tenant created" });
       }
-
       clearForm();
-      await loadProviders();
+      await loadTenants();
     } catch (e) {
-      setStatus({
-        kind: "err",
-        message: e.message,
-      });
+      setStatus({ kind: "err", message: e.message });
     } finally {
       setSaving(false);
     }
   }
 
-  async function del(p) {
-    const ok = confirm(`Delete provider "${p.code}"?`);
-    if (!ok) return;
-
+  async function del(t) {
+    if (!confirm(`Delete tenant "${t.name}"?`)) return;
     try {
-      await fetchJson(base + "/admin/provider/" + p.id, {
-        method: "DELETE",
-      });
-
-      setStatus({
-        kind: "ok",
-        message: "Provider deleted",
-      });
-
-      await loadProviders();
+      await fetchJson(base + "/user/tenant/" + t.id, { method: "DELETE" });
+      setStatus({ kind: "ok", message: "Tenant deleted" });
+      await loadTenants();
     } catch (e) {
-      setStatus({
-        kind: "err",
-        message: e.message,
-      });
+      setStatus({ kind: "err", message: e.message });
     }
   }
 
   return (
     <div className="page">
-      <header className="topbar">
-        <div>
-          <h1>Provider Admin</h1>
-          <p>Filter, create, update, and delete provider routes</p>
-        </div>
-      </header>
-
       <main className="layout">
         <section className="card listCard">
           <div className="cardHeader">
-            <div>
-              <h2>Providers</h2>
-              <p>Filters call GET /admin/provider automatically</p>
-            </div>
+            <h2>Tenants</h2>
           </div>
 
           <div className="filterBox">
             <div className="filterHeader">
-              <strong>Query Filters</strong>
-
-              <button className="linkButton" onClick={clearFilters}>
+              <button className="btn clearFilter" onClick={() => setFilters(defaultFilters)}>
                 Clear filters
               </button>
             </div>
 
             <div className="filtersGrid">
               <label>
-                Base URL
-                <input
-                  value={filters.baseUrl}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, baseUrl: e.target.value }))
-                  }
-                />
-              </label>
-
-              <label>
-                Type
-                <input
-                  value={filters.type}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, type: e.target.value }))
-                  }
-                />
-              </label>
-
-              <label>
-                Code
-                <input
-                  value={filters.code}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, code: e.target.value }))
-                  }
-                />
+                Name
+                <input value={filters.name} onChange={(e) => setFilters(f => ({ ...f, name: e.target.value }))} />
               </label>
 
               <label>
                 API Key
-                <input
-                  value={filters.apiKey}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, apiKey: e.target.value }))
-                  }
+                <input value={filters.apiKey} onChange={(e) => setFilters(f => ({ ...f, apiKey: e.target.value }))} />
+              </label>
+
+              {/* RATE LIMIT FILTER UI ADDED HERE */}
+              <label>
+                Rate Limit
+                <input 
+                  type="number" 
+                  placeholder="Min limit..." 
+                  value={filters.rateLimitPerMin} 
+                  onChange={(e) => setFilters(f => ({ ...f, rateLimitPerMin: e.target.value }))} 
                 />
               </label>
 
               <label>
                 Active
-                <select
-                  value={filters.isActive}
-                  onChange={(e) =>
-                    setFilters((f) => ({
-                      ...f,
-                      isActive: e.target.value,
-                    }))
-                  }
-                >
+                <select value={filters.isActive} onChange={(e) => setFilters(f => ({ ...f, isActive: e.target.value }))}>
                   <option value="">any</option>
                   <option value="true">true</option>
                   <option value="false">false</option>
                 </select>
               </label>
-
-              <label>
-                Timeout
-                <input
-                  type="number"
-                  value={filters.timeout}
-                  onChange={(e) =>
-                    setFilters((f) => ({
-                      ...f,
-                      timeout: e.target.value,
-                    }))
-                  }
-                />
-              </label>
             </div>
           </div>
 
           <Status kind={status.kind} message={status.message} />
-
-          <ProviderTable
-            providers={providers}
-            onEdit={selectProvider}
-            onDelete={del}
-          />
+          <TenantTable tenants={tenants} onEdit={selectTenant} onDelete={del} />
         </section>
 
-        <ProviderEditor
+        <TenantEditor
           mode={mode}
           form={form}
-          onChange={(patch) =>
-            setForm((f) => ({
-              ...f,
-              ...patch,
-            }))
-          }
+          onChange={(patch) => setForm(f => ({ ...f, ...patch }))}
           onSave={save}
           onClear={clearForm}
           saving={saving}

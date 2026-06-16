@@ -236,11 +236,7 @@ const defaultFilters = {
   timeout: "",
 };
 
-export default function App() {
-  const [apiBase, setApiBase] = useState(
-    () => localStorage.getItem("apiBase") || "http://localhost:4000",
-  );
-
+export default function App({ base }) {
   const [filters, setFilters] = useState(defaultFilters);
   const [providers, setProviders] = useState([]);
   const [mode, setMode] = useState("create");
@@ -252,12 +248,6 @@ export default function App() {
   });
 
   const [saving, setSaving] = useState(false);
-
-  const base = useMemo(() => normalizeBaseUrl(apiBase), [apiBase]);
-
-  useEffect(() => {
-    localStorage.setItem("apiBase", base);
-  }, [base]);
 
   async function loadProviders() {
     setStatus({
@@ -397,27 +387,17 @@ export default function App() {
 
   return (
     <div className="page">
-      <header className="topbar">
-        <div>
-          <h1>Provider Admin</h1>
-          <p>Filter, create, update, and delete provider routes</p>
-        </div>
-      </header>
-
       <main className="layout">
         <section className="card listCard">
           <div className="cardHeader">
             <div>
               <h2>Providers</h2>
-              <p>Filters call GET /admin/provider automatically</p>
             </div>
           </div>
 
           <div className="filterBox">
             <div className="filterHeader">
-              <strong>Query Filters</strong>
-
-              <button className="linkButton" onClick={clearFilters}>
+              <button className="btn.clearFilter" onClick={clearFilters}>
                 Clear filters
               </button>
             </div>
