@@ -10,3 +10,25 @@ Super simple static admin panel for managing Provider routes.
 ## API
 
 - Providers: `GET/POST /admin/provider`, `GET/PUT/PATCH/DELETE /admin/provider/:id`
+
+```
+api-aggregator-admin-panel
+├─ index.html
+├─ package-lock.json
+├─ package.json
+├─ public
+├─ README.md
+├─ src
+│  ├─ App copy.jsx
+│  ├─ App.css
+│  ├─ App.jsx
+│  ├─ components
+│  │  ├─ provider
+│  │  │  └─ providerPage.jsx
+│  │  └─ tenant
+│  │     └─ tenantPage.jsx
+│  ├─ index.css
+│  └─ main.jsx
+└─ vite.config.js
+
+```

@@ -157,8 +157,17 @@ select:focus {
 }
 
 .tableWrap {
-  overflow: auto;
-  margin-top: 10px;
+  max-height: 360px;   /* about 6 rows depending on row height */
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.tableWrap thead th {
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 2;
 }
 
 table {
