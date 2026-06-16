@@ -13,7 +13,7 @@ function Status({ kind, message }) {
   return <div className={`status mono ${kind || ""}`}>{message}</div>;
 }
 
-function ProviderTable({ providers, onEdit, onDelete }) {
+function ProviderTable({ providers, onEdit, onDelete, onToggle }) {
   return (
     <div className="tableWrap">
       <table>
@@ -38,7 +38,11 @@ function ProviderTable({ providers, onEdit, onDelete }) {
               <td className="mono">{escapeHtml(p.apiKey)}</td>
               <td>{p.timeout ?? "-"}</td>
               <td>
-                <span className={`badge ${p.isActive ? "active" : "inactive"}`}>
+                <span
+                  className={`badge clickable ${p.isActive ? "active" : "inactive"}`}
+                  onClick={() => onToggle(p)}
+                  title="Click to toggle status"
+                >
                   {String(p.isActive)}
                 </span>
               </td>
@@ -76,7 +80,6 @@ function ProviderEditor({ mode, form, onChange, onSave, onClear, saving }) {
           <h2>{mode === "edit" ? "Update Provider" : "Create Provider"}</h2>
           <p>Manage provider route configuration</p>
         </div>
-
         <span className="modeBadge">{mode}</span>
       </div>
 
@@ -154,7 +157,6 @@ function ProviderEditor({ mode, form, onChange, onSave, onClear, saving }) {
           <button className="btn primary" disabled={saving}>
             {saving ? "Saving..." : mode === "edit" ? "Update" : "Create"}
           </button>
-
           <button
             type="button"
             className="btn"
@@ -171,14 +173,13 @@ function ProviderEditor({ mode, form, onChange, onSave, onClear, saving }) {
 
 async function fetchJson(url, options = {}) {
   const hasBody = options.body !== undefined;
-
   const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
+    method: options.method || "GET",
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...options.headers,
     },
+    body: options.body,
   });
 
   const text = await res.text();
@@ -187,32 +188,17 @@ async function fetchJson(url, options = {}) {
   if (!res.ok) {
     throw new Error(data?.message || res.statusText);
   }
-
   return data;
-}
-
-function normalizeBaseUrl(url) {
-  return String(url || "")
-    .trim()
-    .replace(/\/$/, "");
 }
 
 function buildQuery(filters) {
   const params = new URLSearchParams();
-
   if (filters.baseUrl.trim()) params.set("baseUrl", filters.baseUrl.trim());
   if (filters.type.trim()) params.set("type", filters.type.trim());
   if (filters.code.trim()) params.set("code", filters.code.trim());
   if (filters.apiKey.trim()) params.set("apiKey", filters.apiKey.trim());
-
-  if (filters.isActive !== "") {
-    params.set("isActive", filters.isActive);
-  }
-
-  if (filters.timeout !== "") {
-    params.set("timeout", String(filters.timeout));
-  }
-
+  if (filters.isActive !== "") params.set("isActive", filters.isActive);
+  if (filters.timeout !== "") params.set("timeout", String(filters.timeout));
   const query = params.toString();
   return query ? `?${query}` : "";
 }
@@ -226,7 +212,6 @@ const defaultForm = {
   isActive: true,
   timeout: 10000,
 };
-
 const defaultFilters = {
   baseUrl: "",
   type: "",
@@ -236,44 +221,47 @@ const defaultFilters = {
   timeout: "",
 };
 
-export default function App({ base }) {
+export default function ProviderPage({ base }) {
   const [filters, setFilters] = useState(defaultFilters);
   const [providers, setProviders] = useState([]);
   const [mode, setMode] = useState("create");
   const [form, setForm] = useState(defaultForm);
-
-  const [status, setStatus] = useState({
-    kind: "",
-    message: "",
-  });
-
+  const [status, setStatus] = useState({ kind: "", message: "" });
   const [saving, setSaving] = useState(false);
 
   async function loadProviders() {
-    setStatus({
-      kind: "",
-      message: "Loading providers...",
-    });
+    setStatus({ kind: "", message: "Loading providers..." });
+    try {
+      const url = base + "/admin/provider" + buildQuery(filters);
+      const data = await fetchJson(url);
+      setProviders(Array.isArray(data) ? data : []);
+      setStatus({
+        kind: "ok",
+        message: `Loaded ${Array.isArray(data) ? data.length : 0} providers`,
+      });
+    } catch (e) {
+      setStatus({ kind: "err", message: e.message });
+    }
+  }
 
-    const url = base + "/admin/provider" + buildQuery(filters);
-    const data = await fetchJson(url);
-
-    setProviders(Array.isArray(data) ? data : []);
-
-    setStatus({
-      kind: "ok",
-      message: `Loaded ${Array.isArray(data) ? data.length : 0} providers`,
-    });
+  async function toggleActive(p) {
+    setStatus({ kind: "", message: `Toggling status for ${p.code}...` });
+    try {
+      // PATCH to /admin/provider/:id/state with no body
+      await fetchJson(`${base}/admin/provider/${p.id}/state`, {
+        method: "PATCH",
+      });
+      setStatus({ kind: "ok", message: `Status updated for ${p.code}` });
+      await loadProviders();
+    } catch (e) {
+      setStatus({ kind: "err", message: e.message });
+    }
   }
 
   useEffect(() => {
     if (!base) return;
-
     loadProviders().catch((e) =>
-      setStatus({
-        kind: "err",
-        message: e.message,
-      }),
+      setStatus({ kind: "err", message: e.message }),
     );
   }, [
     base,
@@ -296,7 +284,6 @@ export default function App({ base }) {
 
   function selectProvider(p) {
     setMode("edit");
-
     setForm({
       id: p.id || "",
       code: p.code || "",
@@ -308,80 +295,50 @@ export default function App({ base }) {
     });
   }
 
-  function formPayload() {
-    return {
-      code: String(form.code || "").trim(),
-      type: String(form.type || "").trim(),
-      baseUrl: String(form.baseUrl || "").trim(),
-      apiKey: String(form.apiKey || "").trim(),
-      isActive:
-        typeof form.isActive === "string"
-          ? form.isActive === "true"
-          : Boolean(form.isActive),
-      timeout: Number(form.timeout),
-    };
-  }
-
   async function save() {
     setSaving(true);
-
     try {
-      const payload = formPayload();
+      const payload = {
+        code: String(form.code || "").trim(),
+        type: String(form.type || "").trim(),
+        baseUrl: String(form.baseUrl || "").trim(),
+        apiKey: String(form.apiKey || "").trim(),
+        isActive: Boolean(form.isActive),
+        timeout: Number(form.timeout),
+      };
 
       if (mode === "edit") {
         await fetchJson(base + "/admin/provider/" + form.id, {
           method: "PUT",
           body: JSON.stringify(payload),
         });
-
-        setStatus({
-          kind: "ok",
-          message: "Provider updated",
-        });
+        setStatus({ kind: "ok", message: "Provider updated" });
       } else {
         await fetchJson(base + "/admin/provider", {
           method: "POST",
           body: JSON.stringify(payload),
         });
-
-        setStatus({
-          kind: "ok",
-          message: "Provider created",
-        });
+        setStatus({ kind: "ok", message: "Provider created" });
       }
-
       clearForm();
       await loadProviders();
     } catch (e) {
-      setStatus({
-        kind: "err",
-        message: e.message,
-      });
+      setStatus({ kind: "err", message: e.message });
     } finally {
       setSaving(false);
     }
   }
 
   async function del(p) {
-    const ok = confirm(`Delete provider "${p.code}"?`);
-    if (!ok) return;
-
+    if (!confirm(`Delete provider "${p.code}"?`)) return;
     try {
       await fetchJson(base + "/admin/provider/" + p.id, {
         method: "DELETE",
       });
-
-      setStatus({
-        kind: "ok",
-        message: "Provider deleted",
-      });
-
+      setStatus({ kind: "ok", message: "Provider deleted" });
       await loadProviders();
     } catch (e) {
-      setStatus({
-        kind: "err",
-        message: e.message,
-      });
+      setStatus({ kind: "err", message: e.message });
     }
   }
 
@@ -390,21 +347,19 @@ export default function App({ base }) {
       <main className="layout">
         <section className="card listCard">
           <div className="cardHeader">
-            <div>
-              <h2>Providers</h2>
-            </div>
+            <h2>Providers</h2>
           </div>
 
           <div className="filterBox">
             <div className="filterHeader">
-              <button className="btn.clearFilter" onClick={clearFilters}>
+              <button className="btn clearFilter" onClick={clearFilters}>
                 Clear filters
               </button>
             </div>
 
             <div className="filtersGrid">
               <label>
-                Base URL
+                Base URL{" "}
                 <input
                   value={filters.baseUrl}
                   onChange={(e) =>
@@ -412,9 +367,8 @@ export default function App({ base }) {
                   }
                 />
               </label>
-
               <label>
-                Type
+                Type{" "}
                 <input
                   value={filters.type}
                   onChange={(e) =>
@@ -422,9 +376,8 @@ export default function App({ base }) {
                   }
                 />
               </label>
-
               <label>
-                Code
+                Code{" "}
                 <input
                   value={filters.code}
                   onChange={(e) =>
@@ -432,9 +385,8 @@ export default function App({ base }) {
                   }
                 />
               </label>
-
               <label>
-                API Key
+                API Key{" "}
                 <input
                   value={filters.apiKey}
                   onChange={(e) =>
@@ -442,16 +394,12 @@ export default function App({ base }) {
                   }
                 />
               </label>
-
               <label>
                 Active
                 <select
                   value={filters.isActive}
                   onChange={(e) =>
-                    setFilters((f) => ({
-                      ...f,
-                      isActive: e.target.value,
-                    }))
+                    setFilters((f) => ({ ...f, isActive: e.target.value }))
                   }
                 >
                   <option value="">any</option>
@@ -459,17 +407,13 @@ export default function App({ base }) {
                   <option value="false">false</option>
                 </select>
               </label>
-
               <label>
-                Timeout
+                Timeout{" "}
                 <input
                   type="number"
                   value={filters.timeout}
                   onChange={(e) =>
-                    setFilters((f) => ({
-                      ...f,
-                      timeout: e.target.value,
-                    }))
+                    setFilters((f) => ({ ...f, timeout: e.target.value }))
                   }
                 />
               </label>
@@ -482,18 +426,14 @@ export default function App({ base }) {
             providers={providers}
             onEdit={selectProvider}
             onDelete={del}
+            onToggle={toggleActive}
           />
         </section>
 
         <ProviderEditor
           mode={mode}
           form={form}
-          onChange={(patch) =>
-            setForm((f) => ({
-              ...f,
-              ...patch,
-            }))
-          }
+          onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
           onSave={save}
           onClear={clearForm}
           saving={saving}

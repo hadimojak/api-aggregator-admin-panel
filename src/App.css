@@ -31,29 +31,25 @@ body {
 /* Top Bar */
 
 .topbar {
-  display: flex; /* This puts items in a row */
-  align-items: center; /* Vertically centers them */
-  justify-content: space-between; /* Pushes Title left, Buttons right */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   background: white;
   border-bottom: 1px solid var(--border);
   padding: 0 24px;
-  height: 50px; /* Thinner height */
+  height: 50px;
 }
 
 .topbar h1 {
   margin: 0;
-  font-size: 16px; /* Smaller, more formal font */
+  font-size: 16px;
   font-weight: 600;
   color: var(--primary);
 }
 
 .topbar-nav {
   display: flex;
-  gap: 8px; /* Gap between the two buttons */
-}
-
-.topbar button {
-  margin-right: 10px;
+  gap: 8px;
 }
 
 .btn-nav {
@@ -173,6 +169,7 @@ select:focus {
   background: white;
   cursor: pointer;
   font-size: 13px;
+  transition: all 0.2s;
 }
 
 .btn:hover {
@@ -254,9 +251,11 @@ td {
 /* Badges */
 
 .badge {
+  display: inline-block;
   padding: 4px 8px;
   border-radius: 6px;
   font-size: 12px;
+  transition: all 0.2s ease;
 }
 
 .badge.active {
@@ -266,6 +265,28 @@ td {
 
 .badge.inactive {
   background: #fef2f2;
+  color: #7f1d1d;
+}
+
+/* New Hover Styles for Clickable Badges */
+
+.badge.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.badge.clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.badge.clickable.active:hover {
+  background: #d1fae5;
+  color: #064e3b;
+}
+
+.badge.clickable.inactive:hover {
+  background: #fee2e2;
   color: #7f1d1d;
 }
 
