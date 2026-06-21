@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import "../../App.css";
 
 function escapeHtml(str) {
@@ -13,10 +13,14 @@ function Status({ kind, message }) {
   return <div className={`status mono ${kind || ""}`}>{message}</div>;
 }
 
-function ProviderTable({ providers, onEdit, onDelete, onToggle }) {
+function ProviderTable({ providers, loading, onEdit, onDelete, onToggle }) {
+  if (loading) {
+    return <div style={{ padding: "20px", textAlign: "center" }}>Loading providers...</div>;
+  }
+
   return (
     <div className="tableWrap">
-      <table>
+      <table className="dataTable providerTable">
         <thead>
           <tr>
             <th>Code</th>
@@ -46,24 +50,16 @@ function ProviderTable({ providers, onEdit, onDelete, onToggle }) {
                   {String(p.isActive)}
                 </span>
               </td>
-
               <td className="right actions">
-                <button className="btn" onClick={() => onEdit(p)}>
-                  Edit
-                </button>
-
-                <button className="btn danger" onClick={() => onDelete(p)}>
-                  Delete
-                </button>
+                <button className="btn" onClick={() => onEdit(p)}>Edit</button>
+                <button className="btn danger" onClick={() => onDelete(p)}>Delete</button>
               </td>
             </tr>
           ))}
 
           {providers.length === 0 && (
             <tr>
-              <td colSpan={7} className="empty">
-                No providers found
-              </td>
+              <td colSpan={7} className="empty">No providers found</td>
             </tr>
           )}
         </tbody>
@@ -78,7 +74,7 @@ function ProviderEditor({ mode, form, onChange, onSave, onClear, saving }) {
       <div className="cardHeader">
         <div>
           <h2>{mode === "edit" ? "Update Provider" : "Create Provider"}</h2>
-          <p>Manage provider route configuration</p>
+          <p>Manage provider configuration</p>
         </div>
         <span className="modeBadge">{mode}</span>
       </div>
@@ -92,22 +88,12 @@ function ProviderEditor({ mode, form, onChange, onSave, onClear, saving }) {
       >
         <label>
           Code
-          <input
-            required
-            value={form.code}
-            onChange={(e) => onChange({ code: e.target.value })}
-          />
+          <input required value={form.code} onChange={(e) => onChange({ code: e.target.value })} />
         </label>
-
         <label>
           Type
-          <input
-            required
-            value={form.type}
-            onChange={(e) => onChange({ type: e.target.value })}
-          />
+          <input required value={form.type} onChange={(e) => onChange({ type: e.target.value })} />
         </label>
-
         <label>
           Base URL
           <input
@@ -117,7 +103,6 @@ function ProviderEditor({ mode, form, onChange, onSave, onClear, saving }) {
             onChange={(e) => onChange({ baseUrl: e.target.value })}
           />
         </label>
-
         <label>
           API Key
           <input
@@ -126,9 +111,8 @@ function ProviderEditor({ mode, form, onChange, onSave, onClear, saving }) {
             onChange={(e) => onChange({ apiKey: e.target.value })}
           />
         </label>
-
         <label>
-          Timeout
+          Timeout (ms)
           <input
             type="number"
             min="100"
@@ -137,16 +121,11 @@ function ProviderEditor({ mode, form, onChange, onSave, onClear, saving }) {
             onChange={(e) => onChange({ timeout: e.target.value })}
           />
         </label>
-
         <label>
           Active
           <select
             value={String(form.isActive)}
-            onChange={(e) =>
-              onChange({
-                isActive: e.target.value === "true",
-              })
-            }
+            onChange={(e) => onChange({ isActive: e.target.value === "true" })}
           >
             <option value="true">true</option>
             <option value="false">false</option>
@@ -157,12 +136,7 @@ function ProviderEditor({ mode, form, onChange, onSave, onClear, saving }) {
           <button className="btn primary" disabled={saving}>
             {saving ? "Saving..." : mode === "edit" ? "Update" : "Create"}
           </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={onClear}
-            disabled={saving}
-          >
+          <button type="button" className="btn" onClick={onClear} disabled={saving}>
             Clear
           </button>
         </div>
@@ -188,19 +162,21 @@ async function fetchJson(url, options = {}) {
   if (!res.ok) {
     throw new Error(data?.message || res.statusText);
   }
+
   return data;
 }
 
-function buildQuery(filters) {
+function buildQuery(filters, page, limit) {
   const params = new URLSearchParams();
-  if (filters.baseUrl.trim()) params.set("baseUrl", filters.baseUrl.trim());
-  if (filters.type.trim()) params.set("type", filters.type.trim());
-  if (filters.code.trim()) params.set("code", filters.code.trim());
-  if (filters.apiKey.trim()) params.set("apiKey", filters.apiKey.trim());
+  if (filters.baseUrl) params.set("baseUrl", filters.baseUrl.trim());
+  if (filters.type) params.set("type", filters.type.trim());
+  if (filters.code) params.set("code", filters.code.trim());
+  if (filters.apiKey) params.set("apiKey", filters.apiKey.trim());
   if (filters.isActive !== "") params.set("isActive", filters.isActive);
   if (filters.timeout !== "") params.set("timeout", String(filters.timeout));
-  const query = params.toString();
-  return query ? `?${query}` : "";
+  params.set("page", page);
+  params.set("limit", limit);
+  return `?${params.toString()}`;
 }
 
 const defaultForm = {
@@ -212,6 +188,7 @@ const defaultForm = {
   isActive: true,
   timeout: 10000,
 };
+
 const defaultFilters = {
   baseUrl: "",
   type: "",
@@ -224,54 +201,52 @@ const defaultFilters = {
 export default function ProviderPage({ base }) {
   const [filters, setFilters] = useState(defaultFilters);
   const [providers, setProviders] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState("create");
   const [form, setForm] = useState(defaultForm);
   const [status, setStatus] = useState({ kind: "", message: "" });
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const limit = 5;
 
-  async function loadProviders() {
-    setStatus({ kind: "", message: "Loading providers..." });
-    try {
-      const url = base + "/admin/provider" + buildQuery(filters);
-      const data = await fetchJson(url);
-      setProviders(Array.isArray(data) ? data : []);
-      setStatus({
-        kind: "ok",
-        message: `Loaded ${Array.isArray(data) ? data.length : 0} providers`,
-      });
-    } catch (e) {
-      setStatus({ kind: "err", message: e.message });
+  const loadProviders = useCallback(async () => {
+    if (!base) {
+      console.error("loadProviders: base is empty, aborting");
+      return;
     }
-  }
+    const url = base + "/admin/provider" + buildQuery(filters, page, limit);
+    console.log("Fetching:", url);
+    setLoading(true);
+    try {
+      const res = await fetchJson(url);
+      console.log("Response:", res);
+      setProviders(res.data || []);
+      setTotalPages(res.totalPages || 1);
+      setStatus({ kind: "", message: "" });
+    } catch (e) {
+      console.error("Fetch error:", e);
+      setStatus({ kind: "err", message: `Error: ${e.message}` });
+      setProviders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [base, page, filters]);
+
+  useEffect(() => {
+    loadProviders();
+  }, [loadProviders]);
 
   async function toggleActive(p) {
-    setStatus({ kind: "", message: `Toggling status for ${p.code}...` });
+    setStatus({ kind: "", message: "Toggling status..." });
     try {
-      // PATCH to /admin/provider/:id/state with no body
-      await fetchJson(`${base}/admin/provider/${p.id}/state`, {
-        method: "PATCH",
-      });
+      await fetchJson(`${base}/admin/provider/${p.id}/state`, { method: "PATCH" });
       setStatus({ kind: "ok", message: `Status updated for ${p.code}` });
       await loadProviders();
     } catch (e) {
       setStatus({ kind: "err", message: e.message });
     }
   }
-
-  useEffect(() => {
-    if (!base) return;
-    loadProviders().catch((e) =>
-      setStatus({ kind: "err", message: e.message }),
-    );
-  }, [
-    base,
-    filters.baseUrl,
-    filters.type,
-    filters.code,
-    filters.apiKey,
-    filters.isActive,
-    filters.timeout,
-  ]);
 
   function clearForm() {
     setMode("create");
@@ -280,6 +255,12 @@ export default function ProviderPage({ base }) {
 
   function clearFilters() {
     setFilters(defaultFilters);
+    setPage(1);
+  }
+
+  function updateFilter(key, value) {
+    setPage(1);
+    setFilters((f) => ({ ...f, [key]: value }));
   }
 
   function selectProvider(p) {
@@ -320,6 +301,7 @@ export default function ProviderPage({ base }) {
         });
         setStatus({ kind: "ok", message: "Provider created" });
       }
+
       clearForm();
       await loadProviders();
     } catch (e) {
@@ -332,9 +314,7 @@ export default function ProviderPage({ base }) {
   async function del(p) {
     if (!confirm(`Delete provider "${p.code}"?`)) return;
     try {
-      await fetchJson(base + "/admin/provider/" + p.id, {
-        method: "DELETE",
-      });
+      await fetchJson(base + "/admin/provider/" + p.id, { method: "DELETE" });
       setStatus({ kind: "ok", message: "Provider deleted" });
       await loadProviders();
     } catch (e) {
@@ -348,6 +328,8 @@ export default function ProviderPage({ base }) {
         <section className="card listCard">
           <div className="cardHeader">
             <h2>Providers</h2>
+            {/* Debug: shows what URL is being used */}
+            <span style={{ fontSize: "11px", color: "#888" }}>base: {base || "⚠️ EMPTY"}</span>
           </div>
 
           <div className="filterBox">
@@ -356,66 +338,34 @@ export default function ProviderPage({ base }) {
                 Clear filters
               </button>
             </div>
-
             <div className="filtersGrid">
               <label>
-                Base URL{" "}
-                <input
-                  value={filters.baseUrl}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, baseUrl: e.target.value }))
-                  }
-                />
+                Base URL
+                <input value={filters.baseUrl} onChange={(e) => updateFilter("baseUrl", e.target.value)} />
               </label>
               <label>
-                Type{" "}
-                <input
-                  value={filters.type}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, type: e.target.value }))
-                  }
-                />
+                Type
+                <input value={filters.type} onChange={(e) => updateFilter("type", e.target.value)} />
               </label>
               <label>
-                Code{" "}
-                <input
-                  value={filters.code}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, code: e.target.value }))
-                  }
-                />
+                Code
+                <input value={filters.code} onChange={(e) => updateFilter("code", e.target.value)} />
               </label>
               <label>
-                API Key{" "}
-                <input
-                  value={filters.apiKey}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, apiKey: e.target.value }))
-                  }
-                />
+                API Key
+                <input value={filters.apiKey} onChange={(e) => updateFilter("apiKey", e.target.value)} />
               </label>
               <label>
                 Active
-                <select
-                  value={filters.isActive}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, isActive: e.target.value }))
-                  }
-                >
+                <select value={filters.isActive} onChange={(e) => updateFilter("isActive", e.target.value)}>
                   <option value="">any</option>
                   <option value="true">true</option>
                   <option value="false">false</option>
                 </select>
               </label>
               <label>
-                Timeout{" "}
-                <input
-                  type="number"
-                  value={filters.timeout}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, timeout: e.target.value }))
-                  }
-                />
+                Timeout
+                <input type="number" value={filters.timeout} onChange={(e) => updateFilter("timeout", e.target.value)} />
               </label>
             </div>
           </div>
@@ -424,10 +374,21 @@ export default function ProviderPage({ base }) {
 
           <ProviderTable
             providers={providers}
+            loading={loading}
             onEdit={selectProvider}
             onDelete={del}
             onToggle={toggleActive}
           />
+
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", marginTop: "15px" }}>
+            <button className="btn" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              Prev
+            </button>
+            <span className="mono">Page {page} / {totalPages}</span>
+            <button className="btn" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+              Next
+            </button>
+          </div>
         </section>
 
         <ProviderEditor

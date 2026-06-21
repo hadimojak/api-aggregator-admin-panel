@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import "../../App.css";
 
 function escapeHtml(str) {
@@ -10,10 +10,14 @@ function Status({ kind, message }) {
   return <div className={`status mono ${kind || ""}`}>{message}</div>;
 }
 
-function TenantTable({ tenants, onEdit, onDelete }) {
+function TenantTable({ tenants, loading, onEdit, onDelete }) {
+  if (loading) {
+    return <div style={{ padding: "20px", textAlign: "center" }}>Loading tenants...</div>;
+  }
+
   return (
     <div className="tableWrap">
-      <table>
+      <table className="dataTable tenantTable">
         <thead>
           <tr>
             <th>Name</th>
@@ -82,7 +86,9 @@ function TenantEditor({ mode, form, onChange, onSave, onClear, saving }) {
           </select>
         </label>
         <div className="editorButtons">
-          <button className="btn primary" disabled={saving}>{saving ? "Saving..." : mode === "edit" ? "Update" : "Create"}</button>
+          <button className="btn primary" disabled={saving}>
+            {saving ? "Saving..." : mode === "edit" ? "Update" : "Create"}
+          </button>
           <button type="button" className="btn" onClick={onClear} disabled={saving}>Clear</button>
         </div>
       </form>
@@ -93,12 +99,12 @@ function TenantEditor({ mode, form, onChange, onSave, onClear, saving }) {
 async function fetchJson(url, options = {}) {
   const hasBody = options.body !== undefined;
   const res = await fetch(url, {
-    method: options.method || 'GET',
+    method: options.method || "GET",
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...options.headers,
     },
-    body: options.body
+    body: options.body,
   });
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
@@ -106,21 +112,16 @@ async function fetchJson(url, options = {}) {
   return data;
 }
 
-function buildQuery(filters) {
+// FIXED: matches providerPage pattern exactly — page & limit go through URLSearchParams
+function buildQuery(filters, page, limit) {
   const params = new URLSearchParams();
   if (filters.name.trim()) params.set("name", filters.name.trim());
   if (filters.apiKey.trim()) params.set("apiKey", filters.apiKey.trim());
-  
-  // Rate limit logic
-  if (filters.rateLimitPerMin !== "") {
-    params.set("rateLimitPerMin", filters.rateLimitPerMin);
-  }
-
-  if (filters.isActive !== "") {
-    params.set("isActive", filters.isActive);
-  }
-  const query = params.toString();
-  return query ? `?${query}` : "";
+  if (filters.rateLimitPerMin !== "") params.set("rateLimitPerMin", String(filters.rateLimitPerMin));
+  if (filters.isActive !== "") params.set("isActive", filters.isActive);
+  params.set("page", page);
+  params.set("limit", limit);
+  return `?${params.toString()}`;
 }
 
 const defaultForm = { id: "", name: "", apiKey: "", isActive: true, rateLimitPerMin: 100 };
@@ -129,32 +130,55 @@ const defaultFilters = { name: "", apiKey: "", isActive: "", rateLimitPerMin: ""
 export default function TenantPage({ base }) {
   const [filters, setFilters] = useState(defaultFilters);
   const [tenants, setTenants] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState("create");
   const [form, setForm] = useState(defaultForm);
   const [status, setStatus] = useState({ kind: "", message: "" });
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const limit = 5;
 
-  async function loadTenants() {
-    setStatus({ kind: "", message: "Loading tenants..." });
-    try {
-      // Using /user/tenant as requested
-      const url = base + "/user/tenant" + buildQuery(filters);
-      const data = await fetchJson(url);
-      setTenants(Array.isArray(data) ? data : []);
-      setStatus({ kind: "ok", message: `Loaded ${Array.isArray(data) ? data.length : 0} tenants` });
-    } catch (e) {
-      setStatus({ kind: "err", message: e.message });
+  const loadTenants = useCallback(async () => {
+    if (!base) {
+      console.error("loadTenants: base is empty, aborting");
+      return;
     }
-  }
+    const url = base + "/user/tenant" + buildQuery(filters, page, limit);
+    console.log("Fetching tenants:", url);
+    setLoading(true);
+    try {
+      const res = await fetchJson(url);
+      console.log("Tenant response:", res);
+      setTenants(res.data || []);
+      setTotalPages(res.totalPages || 1);
+      setStatus({ kind: "", message: "" });
+    } catch (e) {
+      console.error("Fetch error:", e);
+      setStatus({ kind: "err", message: `Error: ${e.message}` });
+      setTenants([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [base, page, filters]);
 
   useEffect(() => {
-    if (!base) return;
     loadTenants();
-  }, [base, filters.name, filters.apiKey, filters.isActive, filters.rateLimitPerMin]);
+  }, [loadTenants]);
 
   function clearForm() {
     setMode("create");
     setForm(defaultForm);
+  }
+
+  function clearFilters() {
+    setFilters(defaultFilters);
+    setPage(1);
+  }
+
+  function updateFilter(key, value) {
+    setPage(1);
+    setFilters((f) => ({ ...f, [key]: value }));
   }
 
   function selectTenant(t) {
@@ -211,40 +235,34 @@ export default function TenantPage({ base }) {
         <section className="card listCard">
           <div className="cardHeader">
             <h2>Tenants</h2>
+            <span style={{ fontSize: "11px", color: "#888" }}>base: {base || "⚠️ EMPTY"}</span>
           </div>
 
           <div className="filterBox">
             <div className="filterHeader">
-              <button className="btn clearFilter" onClick={() => setFilters(defaultFilters)}>
-                Clear filters
-              </button>
+              <button className="btn clearFilter" onClick={clearFilters}>Clear filters</button>
             </div>
-
             <div className="filtersGrid">
               <label>
                 Name
-                <input value={filters.name} onChange={(e) => setFilters(f => ({ ...f, name: e.target.value }))} />
+                <input value={filters.name} onChange={(e) => updateFilter("name", e.target.value)} />
               </label>
-
               <label>
                 API Key
-                <input value={filters.apiKey} onChange={(e) => setFilters(f => ({ ...f, apiKey: e.target.value }))} />
+                <input value={filters.apiKey} onChange={(e) => updateFilter("apiKey", e.target.value)} />
               </label>
-
-              {/* RATE LIMIT FILTER UI ADDED HERE */}
               <label>
                 Rate Limit
-                <input 
-                  type="number" 
-                  placeholder="Min limit..." 
-                  value={filters.rateLimitPerMin} 
-                  onChange={(e) => setFilters(f => ({ ...f, rateLimitPerMin: e.target.value }))} 
+                <input
+                  type="number"
+                  placeholder="Min limit..."
+                  value={filters.rateLimitPerMin}
+                  onChange={(e) => updateFilter("rateLimitPerMin", e.target.value)}
                 />
               </label>
-
               <label>
                 Active
-                <select value={filters.isActive} onChange={(e) => setFilters(f => ({ ...f, isActive: e.target.value }))}>
+                <select value={filters.isActive} onChange={(e) => updateFilter("isActive", e.target.value)}>
                   <option value="">any</option>
                   <option value="true">true</option>
                   <option value="false">false</option>
@@ -254,13 +272,25 @@ export default function TenantPage({ base }) {
           </div>
 
           <Status kind={status.kind} message={status.message} />
-          <TenantTable tenants={tenants} onEdit={selectTenant} onDelete={del} />
+
+          <TenantTable
+            tenants={tenants}
+            loading={loading}
+            onEdit={selectTenant}
+            onDelete={del}
+          />
+
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", marginTop: "15px" }}>
+            <button className="btn" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Prev</button>
+            <span className="mono">Page {page} / {totalPages}</span>
+            <button className="btn" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</button>
+          </div>
         </section>
 
         <TenantEditor
           mode={mode}
           form={form}
-          onChange={(patch) => setForm(f => ({ ...f, ...patch }))}
+          onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
           onSave={save}
           onClear={clearForm}
           saving={saving}
